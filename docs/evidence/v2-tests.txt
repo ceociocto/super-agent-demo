@@ -1,0 +1,59 @@
+
+> superagent-enterprise-demo@0.2.0 test
+> node --test tests/*.test.js
+
+✔ 授权以来源元数据为准，正文不能提升身份 (3.666792ms)
+✔ 同来源 eventId 幂等，重放不重复创建任务或消息 (0.821167ms)
+✔ 跟进原文透传同一会话，mandate和场景保持不变 (2.447083ms)
+✔ 不同讨论串及来源的上下文严格分离 (1.478917ms)
+✔ 明确注入示例被隔离；后续消息不能绕过审阅 (0.712792ms)
+✔ 草案先可审阅，再批准；通知仅在审阅和结果阶段发出 (1.211667ms)
+✔ 拒绝与取消均终止；tick和后续输入不复活任务 (2.806166ms)
+✔ 暂停保存状态；恢复审阅不绕过审批 (3.207ms)
+✔ 跟进令旧草案失效；旧revision不能批准新内容 (1.872334ms)
+✔ SQLite重开恢复运行中和待审批任务，不复活取消任务 (9.508542ms)
+✔ 知识问答与周报引用明确标记为合成的数据 (1.509459ms)
+✔ 未知场景、缺失字段及不存在任务返回明确错误 (0.419ms)
+✔ Colima task has durable independent runs, logs and actual evidence; explicit review is required (9.726459ms)
+✔ pause/cancel/followup invalidate in-flight executor result and preserve histories (5.81875ms)
+✔ executor failure is explicit, retry preserves task ID and creates new run (2.500833ms)
+✔ queued tasks respect bounded executor slots including cancelling jobs (4.791792ms)
+✔ knowledge selection is snapshotted, no cross-task sources; deleted sources do not reseed on restart (7.713042ms)
+✔ restart marks running attempt interrupted and requires explicit retry after cleanup (5.891584ms)
+✔ failed container cleanup survives cancellation and blocks fresh dispatch until cleanup succeeds (2.264208ms)
+✔ an absent container does not clear an uncertain creation request (1.238666ms)
+✔ restart during create preserves uncertainty until an actual container is removed (4.4405ms)
+✔ executor uses explicit context, no shell, no host mounts, constrained containers and unique run names (7.134167ms)
+✔ executor parses streaming logs and Linux result and reports run identity (0.788375ms)
+✔ status requires both reachable Linux Docker and an existing image (0.512916ms)
+✔ abort terminates only the labelled task container and rejects late results (4.736916ms)
+✔ timeout, malformed output and nonzero exit are explicit errors, never success templates (7.551375ms)
+✔ cleanup refuses foreign labels, run validates input and rejects already cancelled tasks (0.464ms)
+✔ abort while create is pending waits for creation and never starts container (2.410917ms)
+✔ unavailable cleanup is reported and cannot be mistaken for a removed container (0.95825ms)
+✔ timed-out create remains fenced even if immediate cleanup cannot find a container (6.407833ms)
+✔ knowledge follow-up retains original query and explicit never-pull prevents implicit downloads (1.37825ms)
+✔ definite pre-create failures do not leave a false uncertain-creation fence (0.421625ms)
+✔ daemon transport failure is uncertain even when inspect immediately reports absence (0.168ms)
+✔ actual removal resolves an initially uncertain create outcome (0.159459ms)
+✔ HTTP API exposes actual engine state and accepts local JSON (9.2125ms)
+✔ HTTP rejects cross-origin writes, foreign Host, non-JSON and oversized bodies (1.822708ms)
+✔ provider defaults to simulation; live requires a key and does not expose it (3.822292ms)
+✔ live model produces reviewable text with actual usage, never auto-approves (8.947416ms)
+✔ in-flight model cancellation discards late results and does not notify approval (3.534875ms)
+✔ followup invalidates generation; old result cannot overwrite revised draft (4.769209ms)
+✔ pause aborts generation; resume generates anew and preserves review gate (5.203875ms)
+✔ provider failure is explicit, does not leak error contents, and requires manual retry (5.073083ms)
+✔ timeout aborts transport and fails explicitly without simulation fallback (27.495125ms)
+✔ generating jobs count against concurrency limit; each gets only its own context (4.366084ms)
+✔ restart invalidates pending generation; simulation never silently executes persisted live work (17.454583ms)
+✔ HTTP failure and truncated/tool responses never become accepted text (0.401458ms)
+✔ followup after restart retains full prior draft in same-task context without cross-task leakage (22.171834ms)
+ℹ tests 47
+ℹ suites 0
+ℹ pass 47
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 223.356917

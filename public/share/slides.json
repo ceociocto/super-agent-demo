@@ -1,0 +1,525 @@
+{
+  "title": "Superagent：从理念到可运行演示",
+  "subtitle": "内部技术分享 · 2026-11-07",
+  "durationMinutes": 25,
+  "slides": [
+    {
+      "id": "01",
+      "title": "让系统管理任务的全过程",
+      "kicker": "内部技术分享",
+      "layout": "cover",
+      "summary": "把注意力留给目标、判断和验收",
+      "items": [
+        {
+          "title": "接收请求",
+          "body": "来源、范围、目标"
+        },
+        {
+          "title": "独立执行",
+          "body": "代码、工具、过程"
+        },
+        {
+          "title": "带证据验收",
+          "body": "差异、测试、引用"
+        }
+      ],
+      "seconds": 90,
+      "notes": "大家可以先想一个场景：同时开了几个 AI 会话以后，我们仍然要记住哪个窗口在做什么，重新解释上下文，追问进度，再判断哪份结果可以采用。模型帮我们完成了一部分工作，协调工作却仍然留在人身上。Superagent 的理念，是让系统承担任务关系、执行状态和反馈归属这些工作。今天我们先讲这些机制，再切到本机 Demo，看看代码是否真的在 Linux 环境运行，最后讨论公司试点需要补什么。这里展示的是独立实现的可行性演示，代码修复和资料处理都有固定范围。请大家重点看过程是否可追踪、结果是否有证据、失败是否可处理。",
+      "sources": [
+        {
+          "title": "原型哲学",
+          "url": "https://github.com/deepseek-ai/dsh-superagent-prototype/blob/main/docs/000-philosophy.md"
+        },
+        {
+          "title": "研究快照",
+          "url": "https://github.com/ceociocto/super-agent-demo/blob/main/docs/research-and-feasibility.md"
+        }
+      ]
+    },
+    {
+      "id": "02",
+      "title": "连续协作需要四项系统能力",
+      "kicker": "理念",
+      "layout": "columns",
+      "summary": "每项理念都要落到可观察的行为",
+      "items": [
+        {
+          "title": "连续",
+          "body": "反馈找回原任务"
+        },
+        {
+          "title": "并行",
+          "body": "长任务不堵住新输入"
+        },
+        {
+          "title": "主动",
+          "body": "事件经过授权再启动"
+        },
+        {
+          "title": "持久",
+          "body": "重启保留任务状态"
+        }
+      ],
+      "seconds": 120,
+      "notes": "设计文章把系统能力归纳为连续、高效并行、主动和持久。连续意味着你补充一句话，系统知道它属于哪个任务。并行意味着一个任务还在跑测试，另一个请求也可以被接收。主动意味着事件在授权范围内触发工作，无关消息可以保持安静。持久意味着状态放在外部，生命周期不依赖一个聊天窗口。四个词听起来简单，实际需要任务模型、事件路由、队列和数据库配合。我们这版能验证规则路由、异步执行和单机持久化，还没有部署语义分流、跨平台多对多订阅或全天候服务。后面每一页都会把设计理念与当前实现分开说明。",
+      "sources": [
+        {
+          "title": "设计文章",
+          "url": "https://x.com/DeepSeekHarness/status/2116857257245987236"
+        },
+        {
+          "title": "四项特性归纳",
+          "url": "https://github.com/ceociocto/super-agent-demo/blob/main/docs/research-and-feasibility.md"
+        }
+      ]
+    },
+    {
+      "id": "03",
+      "title": "Router 协调，Worker 交付证据",
+      "kicker": "职责分层",
+      "layout": "flow",
+      "summary": "任务关系与具体执行分别管理",
+      "items": [
+        {
+          "title": "事件入口",
+          "body": "请求与反馈"
+        },
+        {
+          "title": "Router",
+          "body": "关联任务、派工"
+        },
+        {
+          "title": "Worker",
+          "body": "执行、日志、产物"
+        },
+        {
+          "title": "人工验收",
+          "body": "核对当前版本"
+        }
+      ],
+      "seconds": 90,
+      "notes": "用订单查询缺陷举例。请求进入后，Router 判断它属于新任务还是已有任务的反馈，然后派发执行。Worker 在分配的范围里操作代码、运行测试，返回差异和原始输出。人工审阅最终产物。这样 Router 不需要把所有代码和所有长日志长期放在同一个上下文里。这里还要注意，职责划分只有配合工具权限才会成为实际边界。官方文章讨论了理想分层，但公开原型的主会话仍有部分执行工具，不能把不读代码的提示词约定当作硬隔离。本项目把具体执行放入受限容器，控制端负责状态与派工，作为一个可检查的实现选择。",
+      "sources": [
+        {
+          "title": "官方架构",
+          "url": "https://github.com/deepseek-ai/dsh-superagent-prototype/blob/main/docs/007-architecture.md"
+        },
+        {
+          "title": "本项目架构",
+          "url": "https://github.com/ceociocto/super-agent-demo/blob/main/docs/architecture-v2.md"
+        }
+      ]
+    },
+    {
+      "id": "04",
+      "title": "授权必须来自可信入口",
+      "kicker": "行动边界",
+      "layout": "flow",
+      "summary": "消息正文不能提升身份或权限",
+      "items": [
+        {
+          "title": "来源身份",
+          "body": "平台签名与用户"
+        },
+        {
+          "title": "允许范围",
+          "body": "项目、仓库、资料"
+        },
+        {
+          "title": "动作校验",
+          "body": "工具与写入权限"
+        },
+        {
+          "title": "版本验收",
+          "body": "确认具体产物"
+        }
+      ],
+      "seconds": 90,
+      "notes": "原片在三分五十五秒强调，听到消息并不代表获得行动授权。有人在正文写我是管理员，或者文档里包含一段执行命令，都不能改变系统的权限。企业接入时，身份要来自平台签名、登录状态和连接器元数据，动作要经过服务端的范围校验。当前 Demo 的 Alice 和 Guest 只是模拟身份，用来展示准入规则，不能拿来当作公司认证系统。对代码和文档变更，验收还必须绑定具体版本，否则用户看的是旧稿，系统却可能提交新稿。我们把这些规则放在确定性逻辑中，模型将来可以提出建议，但不能自行扩权。",
+      "sources": [
+        {
+          "title": "原片 03:55",
+          "url": "https://www.youtube.com/watch?v=acMNm0vNoKA&t=235s"
+        },
+        {
+          "title": "本项目架构",
+          "url": "https://github.com/ceociocto/super-agent-demo/blob/main/docs/architecture-v2.md"
+        }
+      ]
+    },
+    {
+      "id": "05",
+      "title": "一个任务可以经历多次执行",
+      "kicker": "Task 与 Run",
+      "layout": "timeline",
+      "summary": "执行结束和任务验收分别记录",
+      "items": [
+        {
+          "title": "Task",
+          "body": "目标、授权、上下文"
+        },
+        {
+          "title": "Run 1",
+          "body": "失败记录保留"
+        },
+        {
+          "title": "Run 2",
+          "body": "重试产生新记录"
+        },
+        {
+          "title": "Revision",
+          "body": "新要求重新验收"
+        }
+      ],
+      "seconds": 90,
+      "notes": "原片把 Ticket、Assignment 和 Worker 分开。对应到我们的实现，Task 是用户希望完成的工作，Run 是一次具体执行。第一次主机没连接，任务可以失败，但目标并没有消失。连接恢复后重试，Task ID 不变，同时建立一个新的 Run ID。用户补充要求时，修订号也会变化，旧运行即使稍后返回，也不能覆盖新要求。这样的结构让失败、重试和续办都有可追溯的位置。还有一个容易混淆的点：Run 完成表示程序执行结束，Task 完成要等用户核对并验收。现场会用历史下拉框展示这两层状态。",
+      "sources": [
+        {
+          "title": "原片 05:20",
+          "url": "https://www.youtube.com/watch?v=acMNm0vNoKA&t=320s"
+        },
+        {
+          "title": "本项目架构",
+          "url": "https://github.com/ceociocto/super-agent-demo/blob/main/docs/architecture-v2.md"
+        }
+      ]
+    },
+    {
+      "id": "06",
+      "title": "反馈沿任务关系回到正确上下文",
+      "kicker": "上下文归属",
+      "layout": "flow",
+      "summary": "短反馈需要依附原问题和证据",
+      "items": [
+        {
+          "title": "来源线程",
+          "body": "source + thread"
+        },
+        {
+          "title": "原任务",
+          "body": "稳定 Task ID"
+        },
+        {
+          "title": "历史产物",
+          "body": "消息与执行记录"
+        },
+        {
+          "title": "资料快照",
+          "body": "创建时固定依据"
+        }
+      ],
+      "seconds": 90,
+      "notes": "如果用户只说再展开一点，单独看这句话没有业务含义，放回原问题才知道要补充什么。本项目按来源和线程找到任务，保存历史消息、产物和运行记录，同时在创建任务时固定资料快照。以后资料列表被编辑或删除，也不会悄悄改变这次回答的依据。官方设计还讨论了把长内容留在外部、沿对象引用找回历史，也就是 Inline、Spill 和 Chain of Recall。本版只实现了任务内记录与关联，没有实现多跳回忆和跨平台多对多订阅。数据库保存了历史，也不等于模型窗口里有无限记忆。接模型时仍需决定每次读取哪些相关证据。",
+      "sources": [
+        {
+          "title": "原片复核",
+          "url": "https://github.com/ceociocto/super-agent-demo/blob/main/docs/video-analysis-v2.md"
+        },
+        {
+          "title": "本项目架构",
+          "url": "https://github.com/ceociocto/super-agent-demo/blob/main/docs/architecture-v2.md"
+        }
+      ]
+    },
+    {
+      "id": "07",
+      "title": "长任务运行时仍能接收干预",
+      "kicker": "异步与反馈",
+      "layout": "flow",
+      "summary": "结果回写必须检查任务、运行与修订",
+      "items": [
+        {
+          "title": "排队",
+          "body": "有界并发"
+        },
+        {
+          "title": "后台执行",
+          "body": "日志持续回传"
+        },
+        {
+          "title": "暂停或续办",
+          "body": "中止或更新要求"
+        },
+        {
+          "title": "结果回收",
+          "body": "丢弃过期结果"
+        }
+      ],
+      "seconds": 90,
+      "notes": "把长命令放到后台以后，页面仍然可以接受新的请求和干预。这里最重要的不只是界面不卡，而是状态要保持一致。用户暂停时，我们中止当前容器；恢复时重新建立一次执行，并不承诺从任意一条机器指令继续。用户追加要求时，系统更新修订号，旧执行的结果不能再作为新版本交付。回写时同时核对任务状态、Run ID 和 revision，才能避免迟到结果覆盖。并发槽也要考虑正在取消和清理的执行，不能刚点停止就马上把它当作资源已经释放。这样的处理让任务长时间运行时仍然可控。",
+      "sources": [
+        {
+          "title": "原片 08:40",
+          "url": "https://www.youtube.com/watch?v=acMNm0vNoKA&t=520s"
+        },
+        {
+          "title": "本项目架构",
+          "url": "https://github.com/ceociocto/super-agent-demo/blob/main/docs/architecture-v2.md"
+        }
+      ]
+    },
+    {
+      "id": "08",
+      "title": "计算、状态、执行环境可以分开",
+      "kicker": "原片 12:45",
+      "layout": "columns",
+      "summary": "原片标注：设计方向，本次未部署",
+      "items": [
+        {
+          "title": "协调计算",
+          "body": "Agent Loop 与调度"
+        },
+        {
+          "title": "持久状态",
+          "body": "任务、授权、产物"
+        },
+        {
+          "title": "执行环境",
+          "body": "代码、工具链、依赖"
+        }
+      ],
+      "seconds": 90,
+      "notes": "这一页是原片复核后最重要的纠偏。十二分四十五秒的画面写着计算、状态、环境分离，并明确标注设计方向、本次未部署。它没有要求代码必须放在云端的一台专用服务器。协调循环可以在一个地方运行，任务状态放在数据库里，真正的代码和工具链则由另一个端点持有。端点可以是开发机器、虚拟机或专用执行主机，离线时相关工作仍要等待环境恢复。我们用 Colima 来模拟独立 Linux 端点，就是在验证这种分离方向。不能把这次本机验证扩大解释成云端持续在线或多机高可用。",
+      "sources": [
+        {
+          "title": "原片 12:45",
+          "url": "https://www.youtube.com/watch?v=acMNm0vNoKA&t=765s"
+        },
+        {
+          "title": "原片复核",
+          "url": "https://github.com/ceociocto/super-agent-demo/blob/main/docs/video-analysis-v2.md"
+        }
+      ]
+    },
+    {
+      "id": "09",
+      "title": "Colima 提供可验证的 Linux 执行端",
+      "kicker": "本项目拓扑",
+      "layout": "flow",
+      "summary": "共享一台 Mac，执行环境独立",
+      "items": [
+        {
+          "title": "Mac 控制端",
+          "body": "操作台、调度、SQLite"
+        },
+        {
+          "title": "指定 Context",
+          "body": "本机 Docker socket"
+        },
+        {
+          "title": "Colima VM",
+          "body": "独立 Linux 环境"
+        },
+        {
+          "title": "单次容器",
+          "body": "代码、测试、产物"
+        }
+      ],
+      "seconds": 90,
+      "notes": "这就是当前实际跑起来的拓扑。浏览器把请求交给 Mac 控制服务，服务通过指定的 Docker context，把工作交给 Colima 虚拟机中的容器。每次执行一个容器，结果保存后清理。容器无网络，使用非 root 用户，只读根文件系统，不挂载宿主目录或 Docker socket，并且有限定的 CPU、内存和进程数。我们检查了实际 Docker 配置，而不只是看启动参数。代码与资料处理确实在 Linux ARM64 中完成，但控制端和虚拟机共享一台物理 Mac，电脑休眠仍会同时影响两者。这证明了跨环境派工和受控执行，没有证明容器绝对安全或系统高可用。",
+      "sources": [
+        {
+          "title": "本项目架构",
+          "url": "https://github.com/ceociocto/super-agent-demo/blob/main/docs/architecture-v2.md"
+        },
+        {
+          "title": "本项目验收",
+          "url": "https://github.com/ceociocto/super-agent-demo/blob/main/docs/verification-v2.md"
+        }
+      ]
+    },
+    {
+      "id": "10",
+      "title": "现场复现失败，再核对修复证据",
+      "kicker": "研发演示 3 分钟",
+      "layout": "demo",
+      "summary": "真实运行的固定演练修复器",
+      "items": [
+        {
+          "title": "修复前",
+          "body": "2 通过 / 1 失败"
+        },
+        {
+          "title": "修复后",
+          "body": "3 通过 / 0 失败"
+        },
+        {
+          "title": "执行证据",
+          "body": "代码差异、原始测试输出"
+        },
+        {
+          "title": "人工验收",
+          "body": "核对后确认当前版本"
+        }
+      ],
+      "seconds": 180,
+      "notes": "现在切到控制台。先确认 Colima 在线，然后新建代码修复任务，执行位置选 Linux 容器。我们看日志中的运行系统，再看修复前的测试：两项通过、一项失败。程序实际修改容器里的演练代码，重新运行后是三项通过。打开产物，核对这一行差异和测试输出，然后点击验收。接着看历史执行，失败与重试都有独立记录。请注意，这里是真实运行的固定演练修复器，尚未接入模型来理解任意缺陷，也没有修改公司仓库。演示要验证的是派工、执行、证据返回和版本验收能形成闭环，模型能力要在后续真实业务用例中单独评测。",
+      "sources": [
+        {
+          "title": "本项目验收",
+          "url": "https://github.com/ceociocto/super-agent-demo/blob/main/docs/verification-v2.md"
+        },
+        {
+          "title": "现场演示步骤",
+          "url": "https://github.com/ceociocto/super-agent-demo/blob/main/docs/demo-guide.md"
+        }
+      ]
+    },
+    {
+      "id": "11",
+      "title": "知识任务只处理选定资料",
+      "kicker": "资料演示 2 分钟",
+      "layout": "demo",
+      "summary": "引用与原文一起交付审阅",
+      "items": [
+        {
+          "title": "选择资料",
+          "body": "本次任务的文档范围"
+        },
+        {
+          "title": "摘录与引用",
+          "body": "四项检查、30 分钟"
+        },
+        {
+          "title": "原任务追问",
+          "body": "再展开一点"
+        },
+        {
+          "title": "无证据说明",
+          "body": "缺资料时明确返回"
+        }
+      ],
+      "seconds": 120,
+      "notes": "接下来选择 Atlas 合成资料，询问发布前有哪些检查、观察窗口有多长。结果应该能指向选定文档，摘录出四项检查和三十分钟，而不是凭空补充制度。然后输入再展开一点，观察 Task ID 保持不变，出现新的 Run。最后打开资料报告，确认交付、风险和下周计划都能回到原文。这里的人名和项目进展都是演示数据。当前实现是关键词检索与规则摘录，不是语义 RAG，也没有企业文档 ACL。真正落地时，需要先按用户权限获取可读文档，再提供给模型，同时保留来源和版本。没有相关证据的请求，应明确告诉用户需要补资料。",
+      "sources": [
+        {
+          "title": "本项目架构",
+          "url": "https://github.com/ceociocto/super-agent-demo/blob/main/docs/architecture-v2.md"
+        },
+        {
+          "title": "本项目验收",
+          "url": "https://github.com/ceociocto/super-agent-demo/blob/main/docs/verification-v2.md"
+        }
+      ]
+    },
+    {
+      "id": "12",
+      "title": "失败与不确定状态也要有明确结果",
+      "kicker": "验收证据",
+      "layout": "metrics",
+      "summary": "单元与协议测试、真实执行分别验证",
+      "items": [
+        {
+          "title": "47 项",
+          "body": "自动测试通过"
+        },
+        {
+          "title": "3 场景",
+          "body": "真实 Linux 集成通过"
+        },
+        {
+          "title": "重启",
+          "body": "任务、产物与历史保留"
+        },
+        {
+          "title": "不确定",
+          "body": "清理未确认则停止派工"
+        }
+      ],
+      "seconds": 90,
+      "notes": "这里把不同层次的证据分开列。四十七项自动测试涵盖状态机、HTTP、模型适配器和执行器协议，其中有测试替身，并不等于运行了四十七个真实容器场景。另外做了真实 Linux 三场景、知识追问、无证据响应和创建阶段取消的集成检查。我们也实际重启控制服务，核对任务、修订号和产物保留。如果容器创建请求超时，暂时查不到容器并不能证明请求没有稍后完成，所以系统会保守停止新派工，直到清理得到确认。极端情况仍需人工诊断。这些措施帮助我们看清失败，但当前单进程实现没有分布式 exactly-once 保证。",
+      "sources": [
+        {
+          "title": "本项目验收",
+          "url": "https://github.com/ceociocto/super-agent-demo/blob/main/docs/verification-v2.md"
+        },
+        {
+          "title": "本项目架构",
+          "url": "https://github.com/ceociocto/super-agent-demo/blob/main/docs/architecture-v2.md"
+        }
+      ]
+    },
+    {
+      "id": "13",
+      "title": "从一个团队和可回放用例开始试点",
+      "kicker": "落地建议",
+      "layout": "timeline",
+      "summary": "先只读分析，再草稿，最后受控写回",
+      "items": [
+        {
+          "title": "接仓库与模型",
+          "body": "固定业务用例"
+        },
+        {
+          "title": "接身份与 ACL",
+          "body": "越权负例评测"
+        },
+        {
+          "title": "开放可审阅草稿",
+          "body": "补丁与引用质量"
+        },
+        {
+          "title": "记录实际成本",
+          "body": "返工、时延、调用量"
+        }
+      ],
+      "seconds": 120,
+      "notes": "建议先选一个团队和一个明确场景，准备二十到五十条可重复回放的业务用例。这个数量是试点建议，尚不是我们完成的结果。研发场景接测试仓库和获准模型，知识场景接用户身份与文档权限。先允许只读分析，再交付草稿，通过评测后才讨论受控写回。指标要同时看质量和人的负担，例如补丁测试通过率、引用准确率、越权负例、人工返工时间，以及从请求到可审阅产物的 p50 和 p95。成本要记录实际模型调用、失败重试、运行资源和审阅时间。现在还没有公司业务基线和真实模型账单，不能给出节省比例。最终是否扩展，应由这些实测结果决定。",
+      "sources": [
+        {
+          "title": "本项目架构",
+          "url": "https://github.com/ceociocto/super-agent-demo/blob/main/docs/architecture-v2.md"
+        },
+        {
+          "title": "企业方案与评估",
+          "url": "https://github.com/ceociocto/super-agent-demo/blob/main/docs/research-and-feasibility.md"
+        }
+      ]
+    },
+    {
+      "id": "14",
+      "title": "先确定试点范围和验收负责人",
+      "kicker": "讨论与决策",
+      "layout": "closing",
+      "summary": "带着一组可验证的问题进入下一阶段",
+      "items": [
+        {
+          "title": "场景",
+          "body": "研发协作或内部知识"
+        },
+        {
+          "title": "范围",
+          "body": "仓库、资料、允许模型"
+        },
+        {
+          "title": "负责人",
+          "body": "验收标准与运行维护"
+        },
+        {
+          "title": "证据",
+          "body": "原片、官方原型、本项目验收"
+        }
+      ],
+      "seconds": 150,
+      "notes": "最后希望大家共同确定四件事：先试哪个场景，允许访问哪些仓库和资料，使用哪个获准模型，由谁负责验收与运行维护。今天引用的材料有不同层次。官网介绍通用 Harness，设计文章讨论架构，公开仓库是研究原型，本项目则给出单机 Colima 演示的执行证据。它们不能互相替代。我们已经验证了任务与运行分离、真实执行、结果保存和人工验收，接下来还需要真实业务质量、身份权限和远程执行协议。可以从一个范围清楚、能回放、有人验收的试点开始。剩余时间欢迎讨论：你们最希望减少的是转述上下文、等待进度，还是核对结果的时间？",
+      "sources": [
+        {
+          "title": "Harness 官网",
+          "url": "https://www.deepseek.com/en/harness/"
+        },
+        {
+          "title": "官方研究原型",
+          "url": "https://github.com/deepseek-ai/dsh-superagent-prototype"
+        },
+        {
+          "title": "原片复核",
+          "url": "https://github.com/ceociocto/super-agent-demo/blob/main/docs/video-analysis-v2.md"
+        },
+        {
+          "title": "本项目验收",
+          "url": "https://github.com/ceociocto/super-agent-demo/blob/main/docs/verification-v2.md"
+        }
+      ]
+    }
+  ]
+}

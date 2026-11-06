@@ -1,0 +1,16 @@
+node_modules/
+data/
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+.DS_Store
+work/local-team/*.png
+work/local-team/media/
+work/local-team/*-state.json
+
+# Local task logs, raw-media analysis and artifact build caches
+work/
+.codex-finalizer/

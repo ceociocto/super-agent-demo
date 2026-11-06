@@ -1,0 +1,9 @@
+
+> superagent-enterprise-demo@0.2.0 test:executor
+> node scripts/verify-executor.mjs
+
+PASS real Docker isolation settings
+{"scenario":"bugfix","platform":"linux/arm64","exitCode":0,"tests":{"before":1,"after":3},"sources":1}
+{"scenario":"docs","platform":"linux/arm64","exitCode":0,"sources":1}
+{"scenario":"analysis","platform":"linux/arm64","exitCode":0,"sources":1}
+PASS actual Linux followup, no-evidence response and create-stage cancellation

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Superagent · 内部技术分享</title>
+  <link rel="stylesheet" href="./share.css">
+</head>
+<body>
+  <header class="toolbar">
+    <a class="brand" href="/" aria-label="返回任务控制台"><span class="brand-mark">s<span>·</span></span><span>Superagent<small>内部技术分享</small></span></a>
+    <nav aria-label="演示操作">
+      <button id="outline-button" type="button">目录</button>
+      <button id="notes-button" type="button" aria-pressed="false" aria-controls="speaker-notes">讲稿</button>
+      <button id="fullscreen-button" type="button">全屏</button>
+      <button id="print-button" type="button">打印 / PDF</button>
+      <a id="pptx-download" class="download-link" href="./superagent-internal-talk.pptx" download>下载 PPTX <span aria-hidden="true">↗</span></a>
+    </nav>
+  </header>
+  <main id="presentation">
+    <div id="deck" class="deck" aria-label="内部技术分享幻灯片"><div class="loading" role="status">正在载入分享资料…</div></div>
+    <footer class="playbar">
+      <div class="playbar-left"><a href="/" id="demo-link">打开演示控制台 <span aria-hidden="true">↗</span></a><span class="keyboard-hint">← → 翻页 · 空格下一页</span></div>
+      <div class="navigation"><button type="button" id="previous-slide" aria-label="上一页">←</button><span id="slide-counter" aria-live="polite">— / —</span><button type="button" id="next-slide" aria-label="下一页">→</button></div>
+      <div id="progress" role="progressbar" aria-label="演示进度" aria-valuemin="1" aria-valuemax="14" aria-valuenow="1"><span></span></div>
+    </footer>
+    <aside id="speaker-notes" hidden aria-label="演讲者备注"><div class="notes-heading"><div><span class="eyebrow">演讲者备注</span><h2 id="notes-title"></h2></div><a href="./speaker-script.md" download id="script-download">下载完整解说稿 ↓</a></div><p id="slide-time"></p><div id="notes-text"></div><div class="sources"><h3>本页依据</h3><ul id="sources-list"></ul></div></aside>
+  </main>
+  <dialog id="outline-dialog" aria-labelledby="outline-title"><div class="dialog-heading"><div><span class="eyebrow">分享导航</span><h2 id="outline-title">从任务到独立执行</h2></div><button type="button" id="close-outline" aria-label="关闭目录">×</button></div><ol id="outline-list"></ol></dialog>
+  <p id="announcement" class="visually-hidden" role="status"></p>
+  <script type="module" src="./share.js"></script>
+</body>
+</html>

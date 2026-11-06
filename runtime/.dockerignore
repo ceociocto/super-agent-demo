@@ -1,0 +1,6 @@
+*
+!Dockerfile
+!worker.mjs
+!fixtures/
+!fixtures/**
+!query.mjs
