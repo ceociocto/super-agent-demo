@@ -1,0 +1,15 @@
+{
+  "stage": 3,
+  "date": "2026-11-08",
+  "webSubmittedRealTask": true,
+  "mcpFollowupSameTask": true,
+  "revision": 2,
+  "runs": 2,
+  "taskStatus": "completed",
+  "browserDownloadedFileMatchesActualArtifact": true,
+  "artifactContainsFollowup": true,
+  "protocolTests": 4,
+  "httpTests": 7,
+  "browser": "ego-browser; desktop and 390px mobile layout inspected",
+  "screenshots": "Kept locally under work/local-team, not published"
+}

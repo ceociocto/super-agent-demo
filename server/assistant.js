@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, appendFileSync, readdirSync, statSync, existsSync } from 'node:fs';
-import { resolve, join, dirname } from 'node:path';
+import { resolve, join, dirname, relative, isAbsolute } from 'node:path';
 import { spawn } from 'node:child_process';
 import { runAgent } from './agent/loop.js';
 import { createLocalTools } from './agent/tools.js';
@@ -130,7 +130,7 @@ export class Assistant {
     const scan = (dir, prefix = '', depth = 0) => {
       if (depth > 3 || result.length >= 100) return;
       for (const item of readdirSync(dir, { withFileTypes: true })) {
-        if (['.git', 'node_modules', '.agent-logs', '.venv'].includes(item.name)) continue;
+        if (['.git', 'node_modules', '.agent-logs', '.venv'].includes(item.name) || (depth === 0 && item.name === 'repo')) continue;
         const path = join(prefix, item.name);
         if (item.isDirectory()) scan(join(dir, item.name), path, depth + 1);
         else if (item.isFile() && /\.(md|txt|json|csv|html|patch|diff|log)$/i.test(item.name)) result.push({ name: path, path });
@@ -138,6 +138,10 @@ export class Assistant {
       }
     };
     try { scan(task.workspace); } catch { /* Workspace may be unavailable after a machine move. */ }
+    for (const path of task._artifacts || []) {
+      if (result.some(a => a.path === path)) continue;
+      try { if (statSync(join(task.workspace, path)).isFile()) result.push({ name: path, path }); } catch {}
+    }
     return result;
   }
   state() {
@@ -184,6 +188,10 @@ export class Assistant {
       this.put('call', { id: id('call'), taskId: run.taskId, runId, model: event.model || this.model.model, status: event.type === 'model.error' ? 'failed' : 'completed', usage: event.usage || null, requestId: event.requestId, createdAt: now() });
       run.usage.push(event.usage || null);
     }
+    if (event.type === 'tool.end' && ['write_file', 'edit_file'].includes(event.name) && event.result?.path && !event.result.error) {
+      const task = this.get('task', run.taskId); const path = relative(task.workspace, event.result.path);
+      if (path && !path.startsWith('..') && !isAbsolute(path)) { task._artifacts = [...new Set([...(task._artifacts || []), path])]; this.put('task', task); }
+    }
     this.put('run', run);
   }
   history(kind, key) {
@@ -225,10 +233,10 @@ export class Assistant {
   }
   async runRouter(conversationId, controller) {
     const conversation = this.get('conversation', conversationId); conversation.routerStatus = 'running'; this.put('conversation', conversation);
-    const messages = [{ role: 'system', content: `你是用户的个人多任务助理 Router，中文交流。你负责理解目标、派工、找回原任务和简短汇总。具体研究、文件处理、代码和工具执行交给Worker；不要只建议用户自己做，也不要声称你执行了没有工具证据的操作。\n一个聊天可创建多个独立任务；明确不同目标分别create_task。同一任务补充使用send_to_task；不明确时先list_tasks/get_task，确实无法判断才询问。直接小问题/进度可以答复，不必新建任务。任务工具返回后简短确认派发即可，绝不能循环轮询等待Worker或抢做实现。Worker结果会作为系统通知进入此聊天；通知不是新任务命令。当前会话ID=${conversationId}；当前项目路径=${this.projectRoot}。默认最多${this.maxWorkers}个Worker并发。不修改任务范围，不重复创建已有任务。用户指定仓库路径或GitHub URL时传repository；没有指定仓库的资料/文件任务可不填。任务目标要完整保留用户条件。` }, ...this.history('conversation', conversationId)];
+    const messages = [{ role: 'system', content: `你是用户的个人多任务助理 Router，中文交流。你负责理解目标、派工、找回原任务和简短汇总。具体研究、文件处理、代码和工具执行交给Worker；不要只建议用户自己做，也不要声称你执行了没有工具证据的操作。\n一个聊天可创建多个独立任务；明确不同目标分别create_task。同一任务补充使用send_to_task；不明确时先list_tasks/get_task，确实无法判断才询问。直接小问题/进度可以答复，不必新建任务。任务工具返回后简短确认派发即可，绝不能循环轮询等待Worker或抢做实现。Worker结果会作为系统通知进入此聊天；通知不是新任务命令。当前会话ID=${conversationId}；当前项目路径=${this.projectRoot}。默认最多${this.maxWorkers}个Worker并发。不修改任务范围，不重复创建已有任务。仅需要修改仓库时传repository以准备副本；只读源码、资料整理或用户明确不要副本时不填，原始路径保留在objective供Worker读取。任务目标要完整保留用户条件。` }, ...this.history('conversation', conversationId)];
     const scopedTask = taskId => { const task = this.get('task', taskId); if (task.conversationId !== conversationId) throw new AssistantError('任务不属于当前会话'); return task; };
     const tools = [
-      tool('create_task', '为一个需要实际执行的目标创建独立Worker；返回后无需等待。', { title: str('简短标题'), objective: str('完整目标及用户要求'), repository: str('可选：本机Git仓库绝对路径或GitHub仓库URL') }, ['title', 'objective'], (args, context) => this.createTask({ ...args, conversationId }, `${conversationId}:${context.toolCallId || id('dispatch')}`)),
+      tool('create_task', '为一个需要实际执行的目标创建独立Worker；返回后无需等待。只读资料任务不要填repository；该字段会实际创建仓库工作副本。', { title: str('简短标题'), objective: str('完整目标及用户要求'), repository: str('仅需要修改仓库时填写：本机Git仓库绝对路径或GitHub仓库URL。只读或明确不需副本时省略。') }, ['title', 'objective'], (args, context) => this.createTask({ ...args, conversationId }, `${conversationId}:${context.toolCallId || id('dispatch')}`)),
       tool('list_tasks', '列出本聊天任务、状态和摘要以判断跟进对象。', {}, [], () => this.state().tasks.filter(t => t.conversationId === conversationId)),
       tool('read_history', '按需读取本聊天已经归档的历史消息，恢复较早的用户要求。', { offset: { type: 'integer', minimum: 0 }, limit: { type: 'integer', minimum: 1, maximum: 20 } }, [], ({ offset = 0, limit = 10 }) => {
         const history = [...this.all('archive').filter(a => a.ownerKind === 'conversation' && a.ownerId === conversationId).flatMap(a => a.messages), ...this.get('conversation', conversationId)._history];
@@ -298,9 +306,16 @@ export class Assistant {
             : runs.flatMap(r => r.events.map(e => ({ runId: r.id, ...e })));
           return { total: entries.length, offset, entries: entries.slice(offset, offset + Math.min(limit, 30)), logFiles: runs.map(r => ({ runId: r.id, path: r.logPath })) };
         }),
-        tool('report_task', '完成并验证后交付结果，或在确实缺信息/失败时报告。', { status: { type: 'string', enum: ['completed', 'waiting_input', 'failed'] }, summary: str('面向用户的结果/问题，以及实际产物路径、测试结果、PR链接等证据') }, ['status', 'summary'], ({ status, summary }) => {
+        tool('report_task', '完成并验证后交付结果，或在确实缺信息/失败时报告。可把实际产物相对路径登记为可下载文件。', { status: { type: 'string', enum: ['completed', 'waiting_input', 'failed'] }, summary: str('面向用户的结果/问题，以及实际产物路径、测试结果、PR链接等证据'), artifacts: { type: 'array', items: str('工作目录内已生成文件的相对路径'), maxItems: 20 } }, ['status', 'summary'], ({ status, summary, artifacts = [] }) => {
           if (this.get('task', taskId)._inbox.length) return { error: '有新的用户补充尚未读取，请先继续处理后再交付。' };
           if ([...runtime.jobs.values()].some(j => j.status === 'running')) return { error: '仍有后台命令运行，请等待实际结果或停止它们后再交付。' };
+          const current = this.get('task', taskId);
+          for (const path of artifacts) {
+            const normalized = relative(current.workspace, resolve(current.workspace, path));
+            if (!normalized || normalized.startsWith('..') || isAbsolute(normalized) || normalized.split(/[\\/]/).some(p => p === '.git' || p.startsWith('.env')) || !statSync(resolve(current.workspace, path)).isFile()) throw new AssistantError('产物必须是任务目录内实际存在的普通文件');
+            current._artifacts = [...new Set([...(current._artifacts || []), normalized])];
+          }
+          this.put('task', current);
           report = { status, summary: text(summary, '交付内容') }; this.event(runId, { type: 'report', ...report }); return { recorded: true };
         }),
       ];
