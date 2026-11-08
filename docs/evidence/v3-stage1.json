@@ -1,0 +1,27 @@
+{
+  "stage": 1,
+  "date": "2026-11-08",
+  "unitTests": {
+    "passed": 23,
+    "description": "模型协议及真实本地文件/进程测试；模型响应在单测中使用替身"
+  },
+  "liveModel": {
+    "verified": true,
+    "provider": "glm",
+    "model": "glm-5.3",
+    "toolCalls": 1,
+    "steps": 2,
+    "usage": {
+      "inputTokens": 406,
+      "outputTokens": 26,
+      "totalTokens": 432
+    },
+    "elapsedMs": 7470,
+    "method": "独立客户端调用真实模型；模型调用工具读取随机临时文件，再准确返回文件内容"
+  },
+  "credentials": "仅使用独立环境变量；未保存密钥，未依赖Hermes运行时",
+  "limitations": [
+    "仅验证当前端点和账号的一次实际往返，不代表所有OpenAI兼容端点均已实测",
+    "后台工具按本机用户权限执行，工作目录不是安全隔离"
+  ]
+}

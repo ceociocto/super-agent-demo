@@ -14,3 +14,6 @@ work/local-team/*-state.json
 # Local task logs, raw-media analysis and artifact build caches
 work/
 .codex-finalizer/
+
+# Local model configuration can contain credentials
+config.local.json

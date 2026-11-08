@@ -1,0 +1,34 @@
+{
+  "stage": 2,
+  "date": "2026-11-08",
+  "liveModel": {
+    "verified": true,
+    "model": "glm-5.3",
+    "taskCount": 2,
+    "overlappingWorkers": true,
+    "followupSameTask": true,
+    "filesVerified": true,
+    "restartPreservesHistory": true,
+    "modelCalls": 15,
+    "totalTokens": 35227,
+    "usageComplete": true,
+    "elapsedMs": 47202
+  },
+  "unitTests": {
+    "assistant": 13,
+    "http": 7,
+    "scope": "测试替身验证状态/协议；本地Git分支恢复、文件和HTTP为真实执行"
+  },
+  "repairs": [
+    "整批持久化收件箱，消除部分消息覆盖窗口",
+    "归档旧会话并按需读取，完整工具输出以日志文件保存",
+    "后台作业完成/用户输入唤醒Worker，禁止未结束命令直接交付",
+    "停止清理期间的跟进在资源释放后续办",
+    "仓库准备中断后核对任务分支",
+    "失败模型请求计入调用量，未知usage不伪造"
+  ],
+  "limitations": [
+    "未实现跨机器进程迁移；服务中断后需继续任务并核对已有操作",
+    "原生Shell沿用本机用户权限；不是容器隔离"
+  ]
+}

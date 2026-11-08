@@ -1,0 +1,8 @@
+{
+  "baseUrl": "https://open.bigmodel.cn/api/coding/paas/v4",
+  "model": "glm-5.3",
+  "apiKeyEnv": "MODEL_API_KEY",
+  "maxTokens": 8192,
+  "maxTokensField": "max_tokens",
+  "timeoutMs": 120000
+}

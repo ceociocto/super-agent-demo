@@ -2,9 +2,11 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { resolve, dirname, extname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Engine, AppError } from './engine.js';
-import { createProviderFromEnv } from './provider.js';
-import { ColimaExecutor } from './executor.js';
+import { AppError } from './engine.js';
+import { existsSync } from 'node:fs';
+import { Assistant } from './assistant.js';
+import { createModel } from './agent/model.js';
+import { createAssistantHandler } from './http.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const publicRoot = resolve(root, 'public');
@@ -23,6 +25,7 @@ async function body(req) {
   catch { throw new AppError('请求必须是有效 JSON 对象'); }
 }
 
+// V2 compatibility handler for historical regression tests; the running app uses http.js.
 export function createHandler(engine) {
   return async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -69,13 +72,17 @@ export function createHandler(engine) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  if (existsSync(resolve(root, '.env'))) process.loadEnvFile(resolve(root, '.env'));
   const port = Number(process.env.PORT || 4317);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT must be a valid port');
-  const provider = createProviderFromEnv();
-  const executor = new ColimaExecutor();
-  const engine = new Engine({ dbPath: process.env.DEMO_DB_PATH || resolve(root, 'data', 'demo.sqlite'), provider, executor });
-  const server = createServer(createHandler(engine));
-  server.listen(port, '127.0.0.1', async () => { await engine.recoverExecutions(); engine.start(); console.log(`Superagent ${engine.mode} / Colima: http://127.0.0.1:${port}`); });
-  const stop = () => { server.close(() => { engine.close(); process.exit(0); }); };
+  const model = createModel();
+  const maxWorkers = Number(process.env.MAX_WORKERS || 2);
+  if (!Number.isInteger(maxWorkers) || maxWorkers < 1 || maxWorkers > 8) throw new Error('MAX_WORKERS 必须为 1–8');
+  const engine = new Assistant({ dbPath: process.env.ASSISTANT_DB_PATH || resolve(root, 'data', 'assistant.sqlite'), workspaceRoot: process.env.ASSISTANT_WORKSPACE_ROOT || resolve(root, 'data', 'workspaces'), model, maxWorkers, projectRoot: root });
+  const server = createServer(createAssistantHandler(engine, { publicRoot }));
+  server.on('error', async error => { console.error(`服务启动失败：${error.code || 'unknown'}`); await engine.close(); process.exitCode = 1; });
+  server.listen(port, '127.0.0.1', () => { engine.start(); console.log(`个人多任务助理 · ${model.model} · http://127.0.0.1:${port}${model.configured ? '' : '（尚未配置模型密钥）'}`); });
+  let stopping = false;
+  const stop = async () => { if (stopping) return; stopping = true; server.close(); await engine.close(); process.exit(0); };
   process.on('SIGINT', stop); process.on('SIGTERM', stop);
 }

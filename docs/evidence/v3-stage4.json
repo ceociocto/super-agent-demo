@@ -1,0 +1,37 @@
+{
+  "stage": 4,
+  "date": "2026-11-08",
+  "githubLiveTask": {
+    "status": "completed",
+    "modelCalls": 5,
+    "commandExitCodes": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "pullRequest": "https://github.com/ceociocto/super-agent-demo/pull/1",
+    "independentlyVerifiedDraft": true,
+    "scope": "Worker used real gh commands to check duplicates, create the draft PR, and verify metadata; no merge"
+  },
+  "configuration": {
+    "standalone": true,
+    "defaultEndpointLiveVerified": "GLM Coding / glm-5.3",
+    "otherCompatibleEndpoints": "Protocol/config tests only; run test:model after switching providers"
+  },
+  "validationLimits": [
+    "Stop/recovery and history edge cases use automated model test doubles with real local processes/files; not all six scenes were separately repeated against a live model.",
+    "No arbitrary bug-fix quality benchmark or distributed execution guarantee."
+  ],
+  "regression": {
+    "command": "npm test",
+    "passed": 103,
+    "failed": 0,
+    "includes": [
+      "Router/Worker 32000-character archived message recovery",
+      "Shell background descendant cleanup",
+      "Endpoint/key selection and max token field compatibility"
+    ]
+  },
+  "browserPRLinkVerified": true
+}
