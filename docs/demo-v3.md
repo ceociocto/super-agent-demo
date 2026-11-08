@@ -12,6 +12,8 @@
 
 ## 1. 自由 GitHub 任务：Router 与 Worker 分工
 
+面向非技术听众时，优先使用[自有购物车与出行清单仓库](demo-target-projects.md)，页面可直观看出修复前后变化。
+
 示例输入：
 
 > 修复 https://github.com/OWNER/REPO/issues/NUMBER 描述的问题，补回归测试并提交草稿 PR。保留现有接口兼容性。
