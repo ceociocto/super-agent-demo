@@ -10,7 +10,7 @@
 
 ```sh
 cp .env.example .env
-# 编辑 .env，填写 GLM_API_KEY；不要把密钥提交到 Git。
+# 编辑 .env：填写 MODEL_API_KEY，必要时修改 MODEL_BASE_URL 和 MODEL_NAME。
 npm start
 ```
 
@@ -25,6 +25,8 @@ MODEL_BASE_URL=https://your-provider.example/v1
 MODEL_NAME=your-model-name
 MODEL_API_KEY=your-key
 ```
+
+`MODEL_BASE_URL` 是接口前缀，程序会自动追加 `/chat/completions`；接口与模型需支持工具调用。系统中已经设置的环境变量优先于 `.env`，切换配置后要重启服务。
 
 也可以复制 `config.example.json` 为 `config.local.json`，编辑：
 
