@@ -162,3 +162,19 @@ test('model failure emits structural metadata without leaking exception text', a
   assert.deepEqual(events.at(-1), { type: 'model.error', step: 1, model: 'test', code: 'MODEL_HTTP' });
   assert.ok(!JSON.stringify(events).includes('private key'));
 });
+
+test('claimed inbox messages checkpoint as one complete batch even when persistence fails', async () => {
+  const messages = [{ role: 'user', content: 'existing' }];
+  const added = [{ role: 'user', content: 'first followup' }, { role: 'user', content: 'second followup' }];
+  const snapshots = [];
+  let modelCalled = false;
+  await assert.rejects(runAgent({
+    model: { complete: async () => { modelCalled = true; return text('unexpected'); } }, messages,
+    beforeStep: async () => added,
+    checkpoint: async history => { snapshots.push(structuredClone(history)); throw Error('simulated crash after write'); },
+  }), /simulated crash/);
+  assert.equal(modelCalled, false);
+  assert.equal(snapshots.length, 1);
+  assert.deepEqual(snapshots[0].map(m => m.content), ['existing', 'first followup', 'second followup']);
+  assert.deepEqual(messages, snapshots[0]);
+});

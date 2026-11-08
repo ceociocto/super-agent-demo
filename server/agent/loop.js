@@ -32,7 +32,12 @@ export async function runAgent({ model, messages, tools = [], signal, maxSteps =
   for (let step = 1; step <= maxSteps; step += 1) {
     aborted();
     const added = await beforeStep();
-    for (const message of added || []) await append(message);
+    if (added?.length) {
+      // Inbox delivery is a batch: never overwrite durable claimed inputs with
+      // only the first message if a checkpoint or process fails mid-delivery.
+      messages.push(...added);
+      await checkpoint(messages);
+    }
     aborted();
     await onEvent({ type: 'model.start', step, model: model.model });
     let response;
