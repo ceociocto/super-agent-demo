@@ -71,29 +71,33 @@ function parseMessage(data) {
 }
 
 export function createModel(env = process.env, { fetchImpl = globalThis.fetch, config = loadConfig(env) } = {}) {
-  const keyEnv = config.apiKeyEnv || 'GLM_API_KEY';
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(keyEnv)) throw new Error('apiKeyEnv 配置无效');
-  const key = env.MODEL_API_KEY?.trim() || env[keyEnv]?.trim() || '';
   const model = env.MODEL_NAME?.trim() || config.model || env.GLM_MODEL?.trim() || 'glm-5.3';
   if (typeof model !== 'string' || !/^[A-Za-z0-9_.:/-]{1,100}$/.test(model)) throw new Error('模型名称配置无效');
   let url;
   try { url = new URL(env.MODEL_BASE_URL || config.baseUrl || env.GLM_BASE_URL || DEFAULT_GLM_BASE_URL); } catch { throw new Error('模型 Base URL 配置无效'); }
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error('模型 Base URL 必须是不含凭证和查询参数的 HTTP(S) 地址');
-  if (url.protocol === 'http:' && !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) throw new Error('远程模型接口必须使用 HTTPS');
   const baseUrl = url.href.replace(/\/$/, '');
+  const explicitKeyEnv = Object.hasOwn(config, 'apiKeyEnv');
+  const keyEnv = explicitKeyEnv ? config.apiKeyEnv : (baseUrl === DEFAULT_GLM_BASE_URL && !env.MODEL_API_KEY?.trim() ? 'GLM_API_KEY' : 'MODEL_API_KEY');
+  if (typeof keyEnv !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(keyEnv)) throw new Error('apiKeyEnv 配置无效');
+  // A legacy GLM credential belongs only to the original GLM endpoint. Changing
+  // hosts requires a generic credential or an explicit environment reference.
+  const key = env[keyEnv]?.trim() || '';
   const timeoutMs = positive(env.MODEL_TIMEOUT_MS ?? config.timeoutMs ?? env.GLM_TIMEOUT_MS, 120000, '模型 timeoutMs', 600000);
   const maxTokens = positive(env.MODEL_MAX_TOKENS ?? config.maxTokens ?? env.GLM_MAX_TOKENS, 8192, '模型 maxTokens', 131072);
+  const maxTokensField = env.MODEL_MAX_TOKENS_FIELD || config.maxTokensField || 'max_tokens';
+  if (!['max_tokens', 'max_completion_tokens'].includes(maxTokensField)) throw new Error('maxTokensField 仅支持 max_tokens 或 max_completion_tokens');
   const glm = /^glm-/i.test(model);
   const effort = env.MODEL_REASONING_EFFORT || config.reasoningEffort || (glm ? env.GLM_REASONING_EFFORT : null) || (/^glm-5\.3/i.test(model) ? 'low' : null);
   if (effort && (typeof effort !== 'string' || !/^[a-z_]{1,30}$/.test(effort))) throw new Error('reasoningEffort 配置无效');
   const thinking = config.thinking === undefined ? (glm ? { type: 'enabled' } : null) : config.thinking;
   if (thinking !== null && (typeof thinking !== 'object' || !['enabled', 'disabled'].includes(thinking.type))) throw new Error('thinking 应为 null 或包含 type: enabled/disabled 的对象');
   const extraBody = config.extraBody || {};
-  if (typeof extraBody !== 'object' || Array.isArray(extraBody) || Object.keys(extraBody).some(k => ['messages', 'tools', 'model', 'stream', 'tool_choice', 'api_key', 'authorization'].includes(k.toLowerCase()))) throw new Error('extraBody 不能覆盖模型、会话、工具或凭证字段');
+  if (typeof extraBody !== 'object' || Array.isArray(extraBody) || Object.keys(extraBody).some(k => ['messages', 'tools', 'model', 'stream', 'tool_choice', 'api_key', 'authorization', 'max_tokens', 'max_completion_tokens'].includes(k.toLowerCase()))) throw new Error('extraBody 不能覆盖模型、会话、工具、凭证或输出长度字段');
   return {
     name: glm ? 'glm' : 'openai-compatible', model, baseUrl, configured: Boolean(key),
     async complete({ messages, tools = [], signal } = {}) {
-      if (!key) throw failure(`未配置 MODEL_API_KEY 或 ${keyEnv}；请设置独立环境变量后启动，不会使用模拟回答`, 'MODEL_NOT_CONFIGURED');
+      if (!key) throw failure(`未配置 ${keyEnv}；请设置独立环境变量后启动，不会使用模拟回答`, 'MODEL_NOT_CONFIGURED');
       signal?.throwIfAborted();
       const controller = new AbortController();
       const combined = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
@@ -105,7 +109,7 @@ export function createModel(env = process.env, { fetchImpl = globalThis.fetch, c
         const response = await fetchImpl(`${baseUrl}/chat/completions`, {
           method: 'POST', redirect: 'error', signal: combined,
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-          body: JSON.stringify({ ...(thinking ? { thinking } : {}), ...(effort ? { reasoning_effort: effort } : {}), ...extraBody, model, messages, ...(tools.length ? { tools, tool_choice: 'auto' } : {}), max_tokens: maxTokens, stream: false }),
+          body: JSON.stringify({ ...(thinking ? { thinking } : {}), ...(effort ? { reasoning_effort: effort } : {}), ...extraBody, model, messages, ...(tools.length ? { tools, tool_choice: 'auto' } : {}), [maxTokensField]: maxTokens, stream: false }),
         });
         if (!response.ok) {
           await response.body?.cancel().catch(() => {});

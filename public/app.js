@@ -9,11 +9,30 @@ const fmt = (value, date = false) => { const time = new Date(value); return Numb
 const badge = status => `<span class="badge ${Object.hasOwn(labels, status) ? status : ''}">${esc(labels[status] || status)}</span>`;
 const safeJson = value => JSON.stringify(value, (key, item) => /reasoning|api.?key|authorization/i.test(key) ? undefined : item, 2);
 function richText(value) {
-  return esc(value).replace(/https?:\/\/[^\s<>]+/g, raw => {
-    const url = raw.replace(/[，。；！？、）]+$/, '');
-    return `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>${raw.slice(url.length)}`;
-  });
+  const source = String(value ?? '');
+  // Match before HTML escaping: Chinese prose delimiters and quotes must stay
+  // outside the link, while real query strings, fragments and encoded URLs stay intact.
+  const pattern = /https?:\/\/[^\s<>"'`，。；：！？、（）【】《》〈〉「」『』“”‘’…]+/g;
+  const parts = []; let cursor = 0;
+  for (const match of source.matchAll(pattern)) {
+    const raw = match[0];
+    let url = raw.replace(/[.,;:!?]+$/, '');
+    for (;;) {
+      const closing = url.at(-1), opening = { ')': '(', ']': '[', '}': '{' }[closing];
+      if (!opening || url.split(closing).length <= url.split(opening).length) break;
+      url = url.slice(0, -1).replace(/[.,;:!?]+$/, '');
+    }
+    parts.push(esc(source.slice(cursor, match.index)));
+    try {
+      const parsed = new URL(url);
+      if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Unsupported URL');
+      parts.push(`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(url)}</a>${esc(raw.slice(url.length))}`);
+    } catch { parts.push(esc(raw)); }
+    cursor = match.index + raw.length;
+  }
+  return parts.join('') + esc(source.slice(cursor));
 }
+
 const htmlCache = new WeakMap(), itemCache = new WeakMap();
 function setHTML(node, html) {
   if (htmlCache.get(node) === html) return false;

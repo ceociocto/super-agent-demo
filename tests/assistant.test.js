@@ -389,3 +389,52 @@ test('recovered repository preparation switches an existing clone off main onto 
     assert.equal(e.task(created.id).runs.length, 2);
   } finally { await f.cleanup(); }
 });
+
+for (const ownerKind of ['conversation', 'task']) {
+  test(`${ownerKind} read_history paginates a 32000-character archived message through its tail`, async () => {
+    const marker = 'LONG-MESSAGE-TAIL-EVIDENCE';
+    const original = '原'.repeat(32000 - marker.length) + marker;
+    let step = 0, reconstructed = '';
+    const toolArgs = args => ownerKind === 'task' ? { kind: 'messages', ...args } : args;
+    const model = scripted(args => {
+      step++;
+      if (step === 1) return calls(['page-1', 'read_history', toolArgs({ offset: 0, limit: 1 })]);
+      const last = args.messages.filter(m => m.role === 'tool').at(-1);
+      const data = JSON.parse(last.content);
+      const entry = (data.messages || data.entries)[0];
+      assert.equal(data.charUnit, 'UTF-16');
+      assert.equal(entry.historyIndex, 0);
+      assert.equal(entry.contentPage.totalChars, 32000);
+      assert.equal(entry.contentPage.offset, reconstructed.length);
+      assert.equal(entry.content.length, entry.contentPage.returnedChars);
+      assert.ok(!JSON.stringify(data).includes('private-history-reasoning'));
+      reconstructed += entry.content;
+      if (entry.contentPage.nextOffset !== null) {
+        assert.equal(entry.contentPage.nextOffset, reconstructed.length);
+        return calls([`page-${step}`, 'read_history', toolArgs({ offset: entry.historyIndex, limit: 1, charOffset: entry.contentPage.nextOffset, charLimit: 12000 })]);
+      }
+      assert.equal(reconstructed, original);
+      return ownerKind === 'task' ? report('tail-report', marker) : completion(marker);
+    });
+    const f = fixture(model), e = f.engine;
+    try {
+      const chat = e.createConversation();
+      const ownerId = ownerKind === 'task' ? e.createTask({ conversationId: chat.id, objective: '读取历史长消息尾部' }).id : chat.id;
+      const owner = e.get(ownerKind, ownerId);
+      owner._history = [
+        { role: 'user', content: original, reasoning_content: 'private-history-reasoning' },
+        { role: 'assistant', content: 'a'.repeat(40000), reasoning_content: 'private-history-reasoning' },
+        { role: 'user', content: 'middle' }, { role: 'assistant', content: 'b'.repeat(40000) },
+        { role: 'user', content: 'recent' }, { role: 'assistant', content: 'c'.repeat(40000) },
+      ];
+      e.put(ownerKind, owner);
+      if (ownerKind === 'conversation') e.sendMessage(chat.id, { text: '找回长消息尾部' });
+      e.tick(); await until(() => !e.workers.size && !e.routers.size);
+      assert.equal(reconstructed, original);
+      assert.equal(step, 4);
+      assert.ok(e.all('archive').some(a => a.ownerId === ownerId && a.messages.some(m => m.content === original)));
+      if (ownerKind === 'task') assert.equal(e.task(ownerId).result, marker);
+      else assert.equal(e.get('conversation', ownerId).messages.at(-1).text, marker);
+    } finally { await f.cleanup(); }
+  });
+}

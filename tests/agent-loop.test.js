@@ -47,7 +47,52 @@ test('secret-free configuration supports env key reference and refuses reserved 
   assert.equal(JSON.parse(request.body).temperature, 0.3);
   assert.throws(() => createModel({}, { config: { extraBody: { messages: [] } } }), /extraBody/);
   assert.throws(() => createModel({ MODEL_BASE_URL: 'https://secret@example.test/v1' }, { config: {} }), /凭证/);
-  assert.throws(() => createModel({ MODEL_BASE_URL: 'http://example.test/v1' }, { config: {} }), /HTTPS/);
+  assert.throws(() => createModel({ MODEL_BASE_URL: 'https://example.test/v1?key=hidden' }, { config: {} }), /查询参数/);
+});
+
+test('explicit LAN HTTP endpoint is used unchanged with the configured credential', async () => {
+  let request;
+  const model = createModel({ MODEL_BASE_URL: 'http://192.168.1.25:8080/v1', MODEL_NAME: 'local-model', MODEL_API_KEY: 'local-test-key' }, { config: {}, fetchImpl: async (url, options) => { request = { url, ...options }; return response(choice({ content: 'ok' })); } });
+  await model.complete({ messages: [] });
+  assert.equal(request.url, 'http://192.168.1.25:8080/v1/chat/completions');
+  assert.equal(request.headers.Authorization, 'Bearer local-test-key');
+  assert.equal(request.redirect, 'error');
+});
+
+test('output length parameter is configurable and never sends both token fields', async () => {
+  for (const maxTokensField of ['max_tokens', 'max_completion_tokens']) {
+    let body;
+    const model = createModel({ MODEL_API_KEY: 'test-only' }, { config: { model: 'generic', maxTokensField, maxTokens: 1234 }, fetchImpl: async (_, options) => { body = JSON.parse(options.body); return response(choice({ content: 'ok' })); } });
+    await model.complete({ messages: [] });
+    assert.equal(body[maxTokensField], 1234);
+    assert.equal(body[maxTokensField === 'max_tokens' ? 'max_completion_tokens' : 'max_tokens'], undefined);
+  }
+  assert.throws(() => createModel({}, { config: { maxTokensField: 'invalid_field' } }), /maxTokensField/);
+  assert.throws(() => createModel({}, { config: { extraBody: { max_completion_tokens: 100 } } }), /extraBody/);
+});
+
+test('changing only the endpoint never sends a legacy GLM key to another provider', async () => {
+  for (const configuration of [
+    { env: { MODEL_BASE_URL: 'https://other-provider.test/v1', GLM_API_KEY: 'legacy-secret' }, config: {} },
+    { env: { GLM_API_KEY: 'legacy-secret' }, config: { baseUrl: 'http://192.168.1.25:8080/v1' } },
+  ]) {
+    let called = false;
+    const model = createModel(configuration.env, { config: configuration.config, fetchImpl: async () => { called = true; return response(choice({ content: 'not expected' })); } });
+    assert.equal(model.configured, false);
+    await assert.rejects(model.complete({ messages: [] }), { code: 'MODEL_NOT_CONFIGURED' });
+    assert.equal(called, false);
+  }
+});
+
+test('explicit apiKeyEnv wins over generic credentials and public configuration contains no secret', async () => {
+  let request;
+  const model = createModel({ MODEL_API_KEY: 'generic-secret', CUSTOM_KEY: 'chosen-secret', GLM_API_KEY: 'legacy-secret' }, { config: { baseUrl: 'https://chosen-provider.test/v1', model: 'chosen-model', apiKeyEnv: 'CUSTOM_KEY', extraBody: { temperature: 0.2 } }, fetchImpl: async (_, options) => { request = options; return response(choice({ content: 'ok' })); } });
+  await model.complete({ messages: [] });
+  assert.equal(request.headers.Authorization, 'Bearer chosen-secret');
+  assert.deepEqual(JSON.parse(JSON.stringify(model)), { name: 'openai-compatible', model: 'chosen-model', baseUrl: 'https://chosen-provider.test/v1', configured: true });
+  const missingExplicit = createModel({ MODEL_API_KEY: 'generic-secret' }, { config: { apiKeyEnv: 'MISSING_SPECIFIC_KEY' } });
+  assert.equal(missingExplicit.configured, false);
+  await assert.rejects(missingExplicit.complete({ messages: [] }), { code: 'MODEL_NOT_CONFIGURED' });
 });
 
 test('missing key never falls back to simulated output', async () => {

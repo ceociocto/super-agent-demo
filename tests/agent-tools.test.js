@@ -88,6 +88,49 @@ test('stop cancels a background command and close ends the process group', async
   } finally { await f.dispose(); }
 });
 
+test('shell exit cleans orphaned redirected children and never reports their work completed', async () => {
+  const f = await fixture(); let pid;
+  try {
+    const source = "process.on('SIGTERM',()=>{}); require('fs').writeFileSync('child.ready',String(process.pid)); setInterval(()=>{},1000)";
+    const result = await f.call('run_command', {
+      command: `${node(source)} >/dev/null 2>&1 & child=$!; while [ ! -s child.ready ]; do sleep 0.01; done; echo "$child"`, yieldMs: 1500,
+    });
+    pid = Number(result.stdout.trim());
+    assert.ok(Number.isSafeInteger(pid) && pid > 0);
+    assert.equal(result.exitCode, 0); // Shell success does not imply child success.
+    assert.equal(result.status, 'failed');
+    assert.equal(result.stopReason, 'background_descendants');
+    assert.equal(result.cleanupPending, false);
+    assert.throws(() => process.kill(pid, 0), /ESRCH/);
+    assert.equal(f.events.find(e => e.type === 'job.end').status, 'failed');
+  } finally {
+    if (pid) { try { process.kill(pid, 'SIGKILL'); } catch {} }
+    await f.dispose();
+  }
+});
+
+test('runtime close and AbortSignal wait for TERM-resistant process-group descendants', async () => {
+  for (const action of ['close', 'abort']) {
+    const controller = new AbortController(), f = await fixture({ signal: controller.signal }); let pid;
+    try {
+      const source = "process.on('SIGTERM',()=>{}); require('fs').writeFileSync('child.ready',String(process.pid)); setInterval(()=>{},1000)";
+      const result = await f.call('run_command', {
+        command: `${node(source)} >/dev/null 2>&1 & child=$!; while [ ! -s child.ready ]; do sleep 0.01; done; echo "$child"; wait`, yieldMs: 150,
+      });
+      pid = Number(await readFile(join(f.workspace, 'child.ready'), 'utf8'));
+      assert.equal(result.status, 'running');
+      if (action === 'close') await f.close();
+      else { controller.abort(); await f.jobs.get(result.jobId).done; }
+      assert.equal(f.jobs.get(result.jobId).status, 'cancelled');
+      assert.equal(f.jobs.get(result.jobId).cleanupPending, false);
+      assert.throws(() => process.kill(pid, 0), /ESRCH/);
+    } finally {
+      if (pid) { try { process.kill(pid, 'SIGKILL'); } catch {} }
+      await f.dispose();
+    }
+  }
+});
+
 test('AbortSignal and command deadlines are explicit failures, not success', async () => {
   const controller = new AbortController(), f = await fixture({ signal: controller.signal });
   try {

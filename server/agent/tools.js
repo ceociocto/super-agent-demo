@@ -80,12 +80,32 @@ export function createLocalTools({ workspace, signal, onEvent = async () => {}, 
     return target;
   }
 
+  const groupExists = job => {
+    // Once disappearance is confirmed, never signal this numeric ID again: it
+    // could subsequently be reused by an unrelated process group.
+    if (job.groupSettled || !Number.isSafeInteger(job.pid)) return false;
+    try { process.kill(process.platform === 'win32' ? job.pid : -job.pid, 0); return true; }
+    catch (error) { return error.code !== 'ESRCH'; }
+  };
+  const signalGroup = (job, sig) => {
+    if (!groupExists(job)) return;
+    try { process.kill(process.platform === 'win32' ? job.pid : -job.pid, sig); } catch {}
+  };
   const terminate = (job, reason) => {
-    if (job.status !== 'running') return;
-    job.stopReason = reason;
-    try { process.kill(-job.pid, 'SIGTERM'); } catch { try { job.child.kill('SIGTERM'); } catch {} }
-    job.killTimer = setTimeout(() => { try { process.kill(-job.pid, 'SIGKILL'); } catch { try { job.child.kill('SIGKILL'); } catch {} } }, 500);
-    job.killTimer.unref();
+    if (job.status === 'running') job.stopReason = reason;
+    if (job.cleanup) return job.cleanup;
+    job.cleanup = (async () => {
+      signalGroup(job, 'SIGTERM');
+      for (let attempt = 0; attempt < 25 && groupExists(job); attempt++) await sleep(20);
+      if (groupExists(job)) {
+        signalGroup(job, 'SIGKILL');
+        for (let attempt = 0; attempt < 25 && groupExists(job); attempt++) await sleep(20);
+      }
+      job.cleanupPending = groupExists(job);
+      job.groupSettled = !job.cleanupPending;
+      if (job.cleanupPending) job.error = '所属进程组清理尚未确认，请检查后继续；不能认定后台工作已完成。';
+    })();
+    return job.cleanup;
   };
   const abort = () => { for (const job of jobs.values()) terminate(job, 'cancelled'); };
   signal?.addEventListener('abort', abort, { once: true });
@@ -95,7 +115,7 @@ export function createLocalTools({ workspace, signal, onEvent = async () => {}, 
     const start = bounded(offset, 0, 0, content.length);
     const output = content.slice(start, start + MAX_READ);
     return { jobId: job.id, status: job.status, exitCode: job.exitCode, signal: job.exitSignal || null,
-      stopReason: job.stopReason || null, cwd: job.cwd, output, offset: start, nextOffset: start + output.length,
+      stopReason: job.stopReason || null, cleanupPending: Boolean(job.cleanupPending), cwd: job.cwd, output, offset: start, nextOffset: start + output.length,
       totalLength: content.length, hasMore: start + output.length < content.length,
       stdout: job.stdout, stderr: job.stderr, previewTruncated: job.stdoutTruncated || job.stderrTruncated,
       logPath: job.logPath, stdoutPath: job.stdoutPath, stderrPath: job.stderrPath,
@@ -131,7 +151,7 @@ export function createLocalTools({ workspace, signal, onEvent = async () => {}, 
       await fs.writeFile(file, content.slice(0, first) + newText + content.slice(first + oldText.length));
       return { path: file, replacements: 1 };
     }],
-    ['run_command', '以当前本机用户执行真实 Shell 命令，可使用 git/gh 等现有工具。超过等待时间返回后台 jobId，须 inspect_job 核对完成与退出码。不是容器隔离；取消不会回滚远端操作。', schema({ command: str('要执行的命令'), cwd: str('工作目录，默认当前任务目录'), yieldMs: num('等待首次结果的毫秒数', 0, 5000) }, ['command']), async ({ command, cwd, yieldMs = 1000 }) => {
+    ['run_command', '以当前本机用户执行真实 Shell 命令，可使用 git/gh 等现有工具。长命令直接执行，不要自行加 &：超过等待时间会返回后台 jobId，须 inspect_job 核对结果。Shell退出后遗留的同组子进程会被清理并标记失败。不是容器隔离；取消不会回滚远端操作。', schema({ command: str('要执行的命令'), cwd: str('工作目录，默认当前任务目录'), yieldMs: num('等待首次结果的毫秒数', 0, 5000) }, ['command']), async ({ command, cwd, yieldMs = 1000 }) => {
       if (typeof command !== 'string' || !command.trim() || command.length > 32000) throw new Error('命令必须为 1–32000 字符');
       const directory = pathOf(cwd), stat = await fs.stat(directory);
       if (!stat.isDirectory()) throw new Error('cwd 不是目录');
@@ -165,13 +185,23 @@ export function createLocalTools({ workspace, signal, onEvent = async () => {}, 
       });
       job.done = new Promise(resolveDone => {
         child.on('error', error => { job.error = `无法运行命令（${error.code || 'spawn_error'}）`; });
-        child.on('close', (code, exitSignal) => {
+        child.on('exit', () => {
+          // close may wait on inherited pipes. Detect orphaned descendants at
+          // shell exit, including children which redirected their own output.
+          if (groupExists(job)) {
+            if (!job.stopReason) job.error = 'Shell 已退出但仍有后台子进程，已请求清理。请直接运行长命令并使用返回的 jobId。';
+            void terminate(job, job.stopReason || 'background_descendants');
+          } else job.groupSettled = true;
+        });
+        child.on('close', async (code, exitSignal) => {
           clearTimeout(job.timer);
-          // Keep an already scheduled SIGKILL: descendants can survive the shell's exit.
           for (const stream of ['stdout', 'stderr']) append(stream, decoders[stream].end());
+          if (groupExists(job)) await terminate(job, job.stopReason || 'background_descendants');
+          else if (job.cleanup) await job.cleanup;
+          else job.groupSettled = true;
           job.exitCode = code; job.exitSignal = exitSignal; job.status = job.stopReason === 'cancelled' || job.stopReason === 'stopped' ? 'cancelled' : job.stopReason || job.error || code !== 0 ? 'failed' : 'completed';
           job.finishedAt = new Date().toISOString();
-          emit({ type: 'job.end', jobId: id, status: job.status, exitCode: code, stopReason: job.stopReason || null, logPath: job.logPath });
+          emit({ type: 'job.end', jobId: id, status: job.status, exitCode: code, stopReason: job.stopReason || null, cleanupPending: Boolean(job.cleanupPending), logPath: job.logPath });
           resolveDone();
         });
       });
@@ -233,7 +263,11 @@ export function createLocalTools({ workspace, signal, onEvent = async () => {}, 
   }));
   return { tools, jobs, async close() {
     closed = true; signal?.removeEventListener('abort', abort); abort();
-    await Promise.all([...jobs.values()].map(job => Promise.race([job.done, sleep(1500)])));
+    await Promise.all([...jobs.values()].map(async job => {
+      // Include groups whose shell has already exited, not only running jobs.
+      await terminate(job, job.stopReason || 'cancelled');
+      await Promise.race([job.done, sleep(1500)]);
+    }));
     await Promise.allSettled([...eventWrites]);
   } };
 }
